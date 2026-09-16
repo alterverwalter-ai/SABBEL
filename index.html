@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SABBEL</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #101114;
+  color: #fff;
+}
+
+.screen {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+.card {
+  width: 100%;
+  max-width: 480px;
+  background: #1b1d22;
+  border-radius: 20px;
+  padding: 24px;
+}
+
+h1 {
+  text-align: center;
+  font-size: 38px;
+  margin: 0 0 5px;
+}
+
+.subtitle {
+  text-align: center;
+  color: #aaa;
+  margin-bottom: 25px;
+}
+
+input, button {
+  width: 100%;
+  padding: 14px;
+  margin-top: 10px;
+  border-radius: 10px;
+  font-size: 16px;
+}
+
+input {
+  border: 1px solid #444;
+  background: #111216;
+  color: white;
+}
+
+button {
+  border: 0;
+  background: #2e8b57;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: #353840;
+}
+
+#status {
+  min-height: 24px;
+  text-align: center;
+  margin-top: 14px;
+  color: #ddd;
+}
+
+#chatScreen {
+  display: none;
+  height: 100vh;
+  flex-direction: column;
+}
+
+.chatHeader {
+  padding: 15px;
+  background: #1b1d22;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.chatHeader h2 {
+  margin: 0;
+}
+
+.onlineDot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #28d17c;
+  margin-right: 6px;
+}
+
+#messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 15px;
+}
+
+.message {
+  background: #262930;
+  padding: 10px 13px;
+  border-radius: 12px;
+  margin-bottom: 10px;
+  max-width: 85%;
+  word-break: break-word;
+}
+
+.message.mine {
+  margin-left: auto;
+  background: #246b47;
+}
+
+.sender {
+  font-size: 12px;
+  color: #bbb;
+  margin-bottom: 4px;
+}
+
+.time {
+  font-size: 10px;
+  color: #999;
+  margin-top: 5px;
+  text-align: right;
+}
+
+.empty {
+  text-align: center;
+  color: #777;
+  margin-top: 30px;
+}
+
+.composer {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  background: #1b1d22;
+}
+
+.composer input {
+  margin: 0;
+  flex: 1;
+}
+
+.composer button {
+  margin: 0;
+  width: auto;
+}
+
+#logoutBtn {
+  width: auto;
+  margin: 0;
+  padding: 9px 12px;
+  background: #444;
+}
+</style>
+</head>
+
+<body>
+
+<div id="authScreen" class="screen">
+  <div class="card">
+
+    <h1>SABBEL</h1>
+    <div class="subtitle">Dein privater Chat</div>
+
+    <input id="email"
+           type="email"
+           placeholder="E-Mail-Adresse"
+           autocomplete="email">
+
+    <input id="password"
+           type="password"
+           placeholder="Passwort"
+           autocomplete="current-password">
+
+    <input id="username"
+           type="text"
+           placeholder="Anzeigename"
+           maxlength="30">
+
+    <button id="registerBtn">
+      Registrieren
+    </button>
+
+    <button id="loginBtn" class="secondary">
+      Einloggen
+    </button>
+
+    <div id="status"></div>
+
+  </div>
+</div>
+
+
+<div id="chatScreen">
+
+  <div class="chatHeader">
+
+    <div>
+      <h2>SABBEL</h2>
+      <small>
+        <span class="onlineDot"></span>
+        verbunden
+      </small>
+    </div>
+
+    <button id="logoutBtn">
+      Abmelden
+    </button>
+
+  </div>
+
+
+  <div id="messages"></div>
+
+
+  <div class="composer">
+
+    <input id="messageInput"
+           placeholder="Nachricht schreiben..."
+           maxlength="2000">
+
+    <button id="sendBtn">
+      Senden
+    </button>
+
+  </div>
+
+</div>
+
+
+<script>
+
+const SUPABASE_URL =
+"https://oxrgkupnfsfaebexozjx.supabase.co";
+
+const SUPABASE_KEY =
+"sb_publishable_voTXFRVZvqCL2zhSfBhWfg_uYrGlLLY";
+
+const sb =
+supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_KEY
+);
+
+
+let currentUser = null;
+let currentDisplayName = "SABBEL-Nutzer";
+let realtimeChannel = null;
+
+
+/* =========================
+   ELEMENTE
+========================= */
+
+const authScreen =
+document.getElementById("authScreen");
+
+const chatScreen =
+document.getElementById("chatScreen");
+
+const emailInput =
+document.getElementById("email");
+
+const passwordInput =
+document.getElementById("password");
+
+const usernameInput =
+document.getElementById("username");
+
+const statusBox =
+document.getElementById("status");
+
+const messagesBox =
+document.getElementById("messages");
+
+const messageInput =
+document.getElementById("messageInput");
+
+
+function setStatus(text) {
+  statusBox.textContent = text;
+}
+
+
+/* =========================
+   REGISTRIERUNG
+========================= */
+
+async function registerUser() {
+
+  const email =
+  emailInput.value.trim();
+
+  const password =
+  passwordInput.value;
+
+  const username =
+  usernameInput.value.trim();
+
+  if (!email || !password || !username) {
+    setStatus("Bitte alle Felder ausfüllen.");
+    return;
+  }
+
+  setStatus("Registrierung läuft...");
+
+  const { data, error } =
+  await sb.auth.signUp({
+
+    email: email,
+    password: password,
+
+    options: {
+      data: {
+        display_name: username
+      }
+    }
+
+  });
+
+
+  if (error) {
+    setStatus(error.message);
+    return;
+  }
+
+
+  /*
+  Wenn E-Mail-Bestätigung AUS ist,
+  gibt Supabase sofort eine Session zurück.
+  */
+
+  if (data.session && data.user) {
+
+    currentUser = data.user;
+    currentDisplayName = username;
+
+    await createOrUpdateProfile(
+      data.user.id,
+      username
+    );
+
+    await openChat();
+
+    return;
+  }
+
+
+  /*
+  Wenn E-Mail-Bestätigung AN ist.
+  */
+
+  setStatus(
+    "Registriert. Bitte bestätige jetzt die E-Mail."
+  );
+}
+
+
+/* =========================
+   LOGIN
+========================= */
+
+async function loginUser() {
+
+  const email =
+  emailInput.value.trim();
+
+  const password =
+  passwordInput.value;
+
+  if (!email || !password) {
+    setStatus(
+      "E-Mail und Passwort eingeben."
+    );
+    return;
+  }
+
+  setStatus("Anmeldung läuft...");
+
+
+  const { data, error } =
+  await sb.auth.signInWithPassword({
+    email,
+    password
+  });
+
+
+  if (error) {
+    setStatus(error.message);
+    return;
+  }
+
+
+  currentUser =
+  data.user;
+
+
+  await loadOwnProfile();
+
+  await openChat();
+}
+
+
+/* =========================
+   PROFIL
+========================= */
+
+async function createOrUpdateProfile(
+  userId,
+  username
+) {
+
+  const { error } =
+  await sb
+    .from("profiles")
+    .upsert({
+
+      id: userId,
+      username: username,
+      display_name: username
+
+    });
+
+
+  if (error) {
+    console.error(
+      "Profil konnte nicht gespeichert werden:",
+      error
+    );
+  }
+}
+
+
+async function loadOwnProfile() {
+
+  if (!currentUser) return;
+
+
+  const { data, error } =
+  await sb
+    .from("profiles")
+    .select("display_name,username")
+    .eq("id", currentUser.id)
+    .maybeSingle();
+
+
+  if (!error && data) {
+
+    currentDisplayName =
+      data.display_name ||
+      data.username ||
+      "SABBEL-Nutzer";
+
+    return;
+  }
+
+
+  /*
+  Falls kein Profil existiert:
+  Name aus Auth-Metadaten verwenden.
+  */
+
+  const metadataName =
+    currentUser.user_metadata?.display_name;
+
+
+  if (metadataName) {
+
+    currentDisplayName =
+      metadataName;
+
+    await createOrUpdateProfile(
+      currentUser.id,
+      metadataName
+    );
+
+    return;
+  }
+
+
+  currentDisplayName =
+    "SABBEL-Nutzer";
+}
+
+
+/* =========================
+   CHAT ÖFFNEN
+========================= */
+
+async function openChat() {
+
+  authScreen.style.display =
+  "none";
+
+  chatScreen.style.display =
+  "flex";
+
+
+  await loadMessages();
+
+  startRealtime();
+
+  messageInput.focus();
+}
+
+
+/* =========================
+   NACHRICHTEN LADEN
+========================= */
+
+async function loadMessages() {
+
+  const { data, error } =
+  await sb
+    .from("messages")
+    .select(
+      "id,message,created_at,sender_id"
+    )
+    .order(
+      "created_at",
+      { ascending: true }
+    )
+    .limit(200);
+
+
+  if (error) {
+
+    console.error(
+      "Nachrichten konnten nicht geladen werden:",
+      error
+    );
+
+    messagesBox.innerHTML =
+      '<div class="empty">' +
+      'Nachrichten konnten nicht geladen werden.' +
+      '</div>';
+
+    return;
+  }
+
+
+  messagesBox.innerHTML = "";
+
+
+  if (!data || data.length === 0) {
+
+    messagesBox.innerHTML =
+      '<div class="empty">' +
+      'Noch keine Nachrichten.'
