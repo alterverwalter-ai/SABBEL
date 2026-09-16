@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SABBEL</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #101114;
+      color: #fff;
+    }
+
+    .screen {
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 480px;
+      background: #1b1d22;
+      border-radius: 20px;
+      padding: 24px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 38px;
+      margin: 0 0 5px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #aaa;
+      margin-bottom: 25px;
+    }
+
+    input, button {
+      width: 100%;
+      padding: 14px;
+      margin-top: 10px;
+      border-radius: 10px;
+      font-size: 16px;
+    }
+
+    input {
+      border: 1px solid #444;
+      background: #111216;
+      color: white;
+    }
+
+    button {
+      border: 0;
+      background: #2e8b57;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: #353840;
+    }
+
+    #status {
+      min-height: 24px;
+      text-align: center;
+      margin-top: 14px;
+      color: #ddd;
+      word-break: break-word;
+    }
+
+    #chatScreen {
+      display: none;
+      height: 100vh;
+      flex-direction: column;
+    }
+
+    .chatHeader {
+      padding: 15px;
+      background: #1b1d22;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .chatHeader h2 {
+      margin: 0;
+    }
+
+    .onlineDot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #28d17c;
+      margin-right: 6px;
+    }
+
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 15px;
+    }
+
+    .message {
+      background: #262930;
+      padding: 10px 13px;
+      border-radius: 12px;
+      margin-bottom: 10px;
+      max-width: 85%;
+      word-break: break-word;
+    }
+
+    .mine {
+      margin-left: auto;
+      background: #246b47;
+    }
+
+    .sender {
+      font-size: 12px;
+      color: #bbb;
+      margin-bottom: 4px;
+    }
+
+    .time {
+      font-size: 10px;
+      color: #aaa;
+      margin-top: 5px;
+      text-align: right;
+    }
+
+    .composer {
+      display: flex;
+      gap: 8px;
+      padding: 12px;
+      background: #1b1d22;
+    }
+
+    .composer input {
+      margin: 0;
+      flex: 1;
+    }
+
+    .composer button {
+      margin: 0;
+      width: auto;
+    }
+
+    #logoutBtn {
+      width: auto;
+      margin: 0;
+      padding: 9px 12px;
+      background: #444;
+    }
+  </style>
+</head>
+
+<body>
+
+<div id="authScreen" class="screen">
+  <div class="card">
+
+    <h1>SABBEL</h1>
+    <div class="subtitle">Dein privater Chat</div>
+
+    <input id="email"
+           type="email"
+           placeholder="E-Mail-Adresse"
+           autocomplete="email">
+
+    <input id="password"
+           type="password"
+           placeholder="Passwort"
+           autocomplete="current-password">
+
+    <input id="username"
+           type="text"
+           placeholder="Anzeigename"
+           autocomplete="nickname">
+
+    <button type="button" onclick="registerUser()">
+      Registrieren
+    </button>
+
+    <button type="button"
+            class="secondary"
+            onclick="loginUser()">
+      Einloggen
+    </button>
+
+    <div id="status"></div>
+
+  </div>
+</div>
+
+
+<div id="chatScreen">
+
+  <div class="chatHeader">
+
+    <div>
+      <h2>SABBEL</h2>
+      <small>
+        <span class="onlineDot"></span>
+        verbunden
+      </small>
+    </div>
+
+    <button type="button"
+            id="logoutBtn"
+            onclick="logoutUser()">
+      Abmelden
+    </button>
+
+  </div>
+
+  <div id="messages"></div>
+
+  <div class="composer">
+
+    <input id="messageInput"
+           placeholder="Nachricht schreiben..."
+           maxlength="2000">
+
+    <button type="button" onclick="sendMessage()">
+      Senden
+    </button>
+
+  </div>
+
+</div>
+
+
+<script>
+const SUPABASE_URL =
+  "https://oxrgkupnfsfaebexozjx.supabase.co";
+
+const SUPABASE_KEY =
+  "sb_publishable_voTXFRVZvqCL2zhSfBhWfg_uYrGlLLY";
+
+let sb;
+let currentUser = null;
+let realtimeChannel = null;
+
+const statusBox = document.getElementById("status");
+
+
+function setStatus(text) {
+  statusBox.textContent = text;
+}
+
+
+/* =========================
+   SUPABASE START
+========================= */
+
+try {
+  if (!window.supabase) {
+    throw new Error(
+      "Supabase konnte nicht geladen werden. Internetverbindung prüfen."
+    );
+  }
+
+  sb = window.supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_KEY
+  );
+
+  console.log("SABBEL: Supabase gestartet");
+
+} catch (error) {
+  console.error(error);
+  setStatus("Startfehler: " + error.message);
+}
+
+
+/* =========================
+   REGISTRIERUNG
+========================= */
+
+async function registerUser() {
+
+  try {
+
+    const email =
+      document.getElementById("email").value.trim();
+
+    const password =
+      document.getElementById("password").value;
+
+    const username =
+      document.getElementById("username").value.trim();
+
+    if (!email || !password || !username) {
+      setStatus("Bitte alle Felder ausfüllen.");
+      return;
+    }
+
+    if (!sb) {
+      setStatus("Supabase ist nicht verbunden.");
+      return;
+    }
+
+    setStatus("Registrierung läuft...");
+
+    const { data, error } =
+      await sb.auth.signUp({
+        email: email,
+        password: password,
+        options: {
+          data: {
+            username: username,
+            display_name: username
+          }
+        }
+      });
+
+    if (error) {
+      setStatus("Fehler: " + error.message);
+      return;
+    }
+
+    if (!data.user) {
+      setStatus("Registrierung fehlgeschlagen.");
+      return;
+    }
+
+    if (!data.session) {
+      setStatus(
+        "Registrierung erfolgreich. Bitte E-Mail bestätigen und danach einloggen."
+      );
+      return;
+    }
+
+    currentUser = data.user;
+
+    const ok = await ensureProfile(username);
+
+    if (!ok) return;
+
+    await openChat();
+
+  } catch (error) {
+
+    console.error(error);
+
+    setStatus(
+      "Registrierungsfehler: " + error.message
+    );
+  }
+}
+
+
+/* =========================
+   LOGIN
+========================= */
+
+async function loginUser() {
+
+  try {
+
+    const email =
+      document.getElementById("email").value.trim();
+
+    const password =
+      document.getElementById("password").value;
+
+    if (!email || !password) {
+      setStatus("E-Mail und Passwort eingeben.");
+      return;
+    }
+
+    if (!sb) {
+      setStatus("Supabase ist nicht verbunden.");
+      return;
+    }
+
+    setStatus("Anmeldung läuft...");
+
+    const { data, error } =
+      await sb.auth.signInWithPassword({
+        email: email,
+        password: password
+      });
+
+    if (error) {
+      setStatus("Fehler: " + error.message);
+      return;
+    }
+
+    if (!data.user) {
+      setStatus("Anmeldung fehlgeschlagen.");
+      return;
+    }
+
+    currentUser = data.user;
+
+    const username =
+      document.getElementById("username").value.trim();
+
+    const ok = await ensureProfile(username);
+
+    if (!ok) return;
+
+    await openChat();
+
+  } catch (error) {
+
+    console.error(error);
+
+    setStatus(
+      "Anmeldefehler: " + error.message
+    );
+  }
+}
+
+
+/* =========================
+   PROFIL
+========================= */
+
+async function ensureProfile(username = "") {
+
+  try {
+
+    const { data, error } =
+      await sb
+        .from("profiles")
+        .select("*")
+        .eq("id", currentUser.id)
+        .maybeSingle();
+
+    if (error) {
+      console.error("Profil lesen:", error);
+    }
+
+    if (data) {
+      return true;
+    }
+
+    if (!username) {
+
+      username =
+        document.getElementById("username")
+          .value
+          .trim();
+    }
+
+    if (!username) {
+
+      setStatus(
+        "Bitte Anzeigenamen eingeben und erneut einloggen."
+      );
+
+      await sb.auth.signOut();
+
+      currentUser = null;
+
+      return false;
+    }
+
+    const { error: insertError } =
+      await sb
+        .from("profiles")
+        .insert({
+          id: currentUser.id,
+          username: username,
+          display_name: username
+        });
+
+    if (insertError) {
+
+      console.error(
+        "Profil anlegen:",
+        insertError
+      );
+
+      setStatus(
+        "Profilfehler: " +
+        insertError.message
+      );
+
+      return false;
+    }
+
+    return true;
+
+  } catch (error) {
+
+    console.error(error);
+
+    setStatus(
+      "Profilfehler: " + error.message
+    );
+
+    return false;
+  }
+}
+
+
+/* =========================
+   CHAT ÖFFNEN
+========================= */
+
+async function openChat() {
+
+  document.getElementById("authScreen")
+    .style.display = "none";
+
+  document.getElementById("chatScreen")
+    .style.display = "flex";
+
+  await loadMessages();
+
+  startRealtime();
+}
+
+
+/* =========================
+   NACHRICHTEN LADEN
+========================= */
+
+async function loadMessages() {
+
+  const box =
+    document.getElementById("messages");
+
+  const { data, error } =
+    await sb
+      .from("messages")
+      .select(
+        "id,message,created_at,sender_id"
+      )
+      .order(
+        "created_at",
+        { ascending: true }
+      )
+      .limit(200);
+
+  if (error) {
+
+    console.error(
+      "Fehler beim Laden:",
+      error
+    );
+
+    box.textContent =
+      "Nachrichten konnten nicht geladen werden: " +
+      error.message;
+
+    return;
+  }
+
+  box.innerHTML = "";
+
+  if (data) {
+    data.forEach(addMessage);
+  }
+
+  box.scrollTop = box.scrollHeight;
+}
+
+
+/* =========================
+   NACHRICHT DARSTELLEN
+========================= */
+
+function addMessage(row) {
+
+  const box =
+    document.getElementById("messages");
+
+  const div =
+    document.createElement("div");
+
+  div.className = "message";
+
+  if (
+    currentUser &&
+    row.sender_id === currentUser.id
+  ) {
+    div.classList.add("mine");
+  }
+
+  const sender =
+    document.createElement("div");
+
+  sender.className = "sender";
+
+  sender.textContent =
+    row.sender_id === currentUser?.id
+      ? "Du"
+      : "Teilnehmer";
+
+  const text =
+    document.createElement("div");
+
+  text.textContent =
+    row.message || "";
+
+  const time =
+    document.createElement("div");
+
+  time.className = "time";
+
+  if (row.created_at) {
+
+    time.textContent =
+      new Date(
+        row.created_at
+      ).toLocaleTimeString(
+        "de-DE",
+        {
+          hour: "2-digit",
+          minute: "2-digit"
+        }
+      );
+  }
+
+  div.appendChild(sender);
+  div.appendChild(text);
+  div.appendChild(time);
+
+  box.appendChild(div);
+
+  box.scrollTop =
+    box.scrollHeight;
+}
+
+
+/* =========================
+   NACHRICHT SENDEN
+========================= */
+
+async function sendMessage() {
+
+  try {
+
+    const input =
+      document.getElementById("messageInput");
+
+    const message =
+      input.value.trim();
+
+    if (!message) return;
+
+    if (!currentUser) {
+      alert("Nicht angemeldet.");
+      return;
+    }
+
+    const { error } =
+      await sb
+        .from("messages")
+        .insert({
+          sender_id: currentUser.id,
+          message: message
+        });
+
+    if (error) {
+
+      console.error(error);
+
+      alert(
+        "Nachricht konnte nicht gesendet werden: " +
+        error.message
+      );
+
+      return;
+    }
+
+    input.value = "";
+
+  } catch (error) {
+
+    console.error(error);
+
+    alert(
+      "Sendefehler: " +
+      error.message
+    );
+  }
+}
+
+
+/* =========================
+   REALTIME
+========================= */
+
+function startRealtime() {
+
+  if (realtimeChannel) {
+
+    sb.removeChannel(
+      realtimeChannel
+    );
+
+    realtimeChannel = null;
+  }
+
+  realtimeChannel =
+    sb
+      .channel("sabbel-messages")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages"
+        },
+        payload => {
+
+          addMessage(
+            payload.new
+          );
+
+          playNotification(
+            payload.new
+          );
+        }
+      )
+      .subscribe(status => {
+
+        console.log(
+          "Realtime:",
+          status
+        );
+      });
+}
+
+
+/* =========================
+   KURZER NACHRICHTENTON
+========================= */
+
+function playNotification(row) {
+
+  if (
+    currentUser &&
+    row.sender_id === currentUser.id
+  ) {
+    return;
+  }
+
+  try {
+
+    const AudioContext =
+      window.AudioContext ||
+      window.webkitAudioContext;
+
+    if (!AudioContext) return;
+
+    const ctx =
+      new AudioContext();
+
+    const oscillator =
+      ctx.createOscillator();
+
+    const gain =
+      ctx.createGain();
+
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+
+    oscillator.frequency.value = 650;
+
+    gain.gain.setValueAtTime(
+      0.08,
+      ctx.currentTime
+    );
+
+    gain.gain.exponentialRampToValueAtTime(
+      0.001,
+      ctx.currentTime + 0.12
+    );
+
+    oscillator.start();
+
+    oscillator.stop(
+      ctx.currentTime + 0.12
+    );
+
+  } catch (error) {
+
+    console.log(
+      "Ton nicht möglich:",
+      error
+    );
+  }
+}
+
+
+/* =========================
+   ABMELDEN
+========================= */
+
+async function logoutUser() {
+
+  try {
+
+    if (realtimeChannel) {
+
+      await sb.removeChannel(
+        realtimeChannel
+      );
+
+      realtimeChannel = null;
+    }
+
+    await sb.auth.signOut();
+
+    currentUser = null;
+
+    document.getElementById("chatScreen")
+      .style.display = "none";
+
+    document.getElementById("authScreen")
+      .style.display = "flex";
+
+    document.getElementById("password")
+      .value = "";
+
+    setStatus("Abgemeldet.");
+
+  } catch (error) {
+
+    console.error(error);
+
+    setStatus(
+      "Abmeldefehler: " +
+      error.message
+    );
+  }
+}
+
+
+/* =========================
+   ENTER = SENDEN
+========================= */
+
+document.getElementById("messageInput")
+  .addEventListener(
+    "keydown",
+    function(event) {
+
+      if (
+        event.key === "Enter" &&
+        !event.shiftKey
+      ) {
+        event.preventDefault();
+        sendMessage();
+      }
+    }
+  );
+
+
+/* =========================
+   BESTEHENDE SESSION PRÜFEN
+========================= */
+
+async function restoreSession() {
+
+  if (!sb) return;
+
+  try {
+
+    const {
+      data: { session },
+      error
+    } =
+      await sb.auth.getSession();
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    if (
+      session &&
+      session.user
+    ) {
+
+      currentUser =
+        session.user;
+
+      await openChat();
+    }
+
+  } catch (error) {
+
+    console.error(
+      "Session:",
+      error
+    );
+  }
+}
+
+restoreSession();
+
+</script>
+
+</body>
+</html>
